@@ -1,6 +1,6 @@
 import TelegramBot from "node-telegram-bot-api";
-import { upsertUser } from "../db.js";
-import { generateAnschreiben } from "../services/claudeService.js";
+import { upsertUser } from "../../db.js";
+import { generateAnschreiben } from "../../backend/services/claudeService.js";
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || "";
