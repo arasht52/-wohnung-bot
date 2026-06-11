@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 
 // Fix 5 — Model name from .env, not hardcoded.
 // Fallback keeps the app running even if the env var is missing.
-const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
+const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
