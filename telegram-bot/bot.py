@@ -396,6 +396,9 @@ def main() -> None:
 
     logger.info("🤖 Telegram bot started")
     app.run_polling(drop_pending_updates=True)
+import threading, http.server, socketserver, os
+def _h(s,r): pass
+threading.Thread(target=lambda:socketserver.TCPServer(("",int(os.environ.get("PORT",8080))),_h).serve_forever(),daemon=True).start()
 
 
 if __name__ == "__main__":
