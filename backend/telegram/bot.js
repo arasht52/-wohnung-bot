@@ -53,7 +53,6 @@ async function sendStep(chatId, step, data) {
   if (step === "confirm") {
     
 
-cat > backend/telegram/bot.js << 'EOF'
 import TelegramBot from "node-telegram-bot-api";
 import { upsertUser } from "../../db.js";
 import { generateAnschreiben } from "../../backend/services/claudeService.js";
