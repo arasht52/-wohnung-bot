@@ -7,10 +7,15 @@ const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-function buildPrompt(data) {
-  const petLine = data.hasPets
-    ? "Ich halte ein Haustier und bin mir meiner Verantwortung als Mieter dabei vollständig bewusst."
-    : "Ich halte keine Haustiere.";
+function buildPrompt(data) { 
+  const plural = parseInt(data.familySize) >= 2;
+  cconst petLine = data.hasPets
+  ? (plural
+      ? "Wir halten ein Haustier und gehen verantwortungsvoll damit um."
+      : "Ich halte ein Haustier und gehe verantwortungsvoll damit um.")
+  : (plural
+      ? "Wir halten keine Haustiere."
+      : "Ich halte keine Haustiere.");
 
   const extraLine = data.extraNote
     ? `Zusätzliche Information: ${data.extraNote}`
@@ -46,6 +51,13 @@ ${data.firstName} ${data.lastName}"
 - Kein Datum
 - Keine Adresse
 - Nur den Brieftext ausgeben
+- Wenn Haushaltsgröße mindestens 2 Personen beträgt, muss der gesamte Brief konsequent mit "wir", "uns" und "unser" geschrieben werden.
+- Niemals zwischen "ich" und "wir" wechseln.
+- Nicht "wunderschöne Stadt" schreiben.
+- Kein emotionaler Stil.
+- Unterschrift immer in lateinischer Schrift.
+Verwende den Namen des Bewerbers als Unterschrift.
+Falls der Name in lateinischer Schrift vorliegt, verwende diese Schreibweise.
 
 Schreibe NUR den Brieftext. Keine Erklärungen.`;
 }
