@@ -1,110 +1,88 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-const CLAUDE_MODEL =
-  process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5";
+const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5";
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-function hasPersian(text = "") {
-  return /[\u0600-\u06FF]/.test(text);
-}
+function buildPrompt(data) {
+  const familySize = Number.parseInt(String(data.familySize || "1"), 10);
+  const isPlural = Number.isFinite(familySize) && familySize >= 2;
 
-function transliteratePersian(text = "") {
-  const map = {
-    "آ": "A", "ا": "a", "ب": "b", "پ": "p", "ت": "t", "ث": "s",
-    "ج": "j", "چ": "ch", "ح": "h", "خ": "kh", "د": "d", "ذ": "z",
-    "ر": "r", "ز": "z", "ژ": "zh", "س": "s", "ش": "sh", "ص": "s",
-    "ض": "z", "ط": "t", "ظ": "z", "ع": "a", "غ": "gh", "ف": "f",
-    "ق": "gh", "ک": "k", "ك": "k", "گ": "g", "ل": "l", "م": "m",
-    "ن": "n", "و": "v", "ه": "h", "ی": "i", "ي": "i",
-  };
+  const applicantName = `${data.firstName || ""} ${data.lastName || ""}`.trim();
 
-  return text
-    .split("")
-    .map((ch) => map[ch] ?? ch)
-    .join("")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function getLatinName(firstName = "", lastName = "") {
-  const fullName = `${firstName} ${lastName}`.trim();
-
-  if (!hasPersian(fullName)) {
-    return fullName;
-  }
-
-  return transliteratePersian(fullName);
-}
-function buildPrompt(data) { 
-  const plural = parseInt(data.familySize) >= 2;
-  const latinName = getLatinName(data.firstName, data.lastName);
-  cconst petLine = data.hasPets
-  ? (plural
+  const petLine = data.hasPets
+    ? isPlural
       ? "Wir halten ein Haustier und gehen verantwortungsvoll damit um."
-      : "Ich halte ein Haustier und gehe verantwortungsvoll damit um.")
-  : (plural
+      : "Ich halte ein Haustier und gehe verantwortungsvoll damit um."
+    : isPlural
       ? "Wir halten keine Haustiere."
-      : "Ich halte keine Haustiere.");
+      : "Ich halte keine Haustiere.";
 
   const extraLine = data.extraNote
     ? `Zusätzliche Information: ${data.extraNote}`
-    : "";
+    : "Zusätzliche Information: Keine";
+
+  const grammarRule = isPlural
+    ? 'Der gesamte Brief muss konsequent in der Wir-Form geschrieben werden. Verwende ausschließlich "wir", "uns" und "unser". Verwende niemals "ich", "mich", "mein" oder "mir".'
+    : 'Der gesamte Brief muss konsequent in der Ich-Form geschrieben werden. Verwende "ich", "mich", "mein" und "mir".';
 
   return `Du bist ein Experte für deutsche Wohnungsbewerbungen.
 
-Schreibe ein professionelles, warmherziges und überzeugendes Anschreiben für eine Wohnungsbewerbung.
+Aufgabe:
+Schreibe ein professionelles, natürliches und höfliches Anschreiben für eine Wohnungsbewerbung auf Deutsch.
 
 Bewerberdaten:
-- Name: ${latinName}
-- Beruf: ${data.job}
-- Monatliches Nettoeinkommen: ${data.income} €
-- Haushaltsgröße: ${data.familySize} Person(en)
+- Name des Bewerbers: ${applicantName}
+- Beruf: ${data.job || ""}
+- Monatliches Nettoeinkommen: ${data.income || ""} €
+- Haushaltsgröße: ${data.familySize || "1"} Person(en)
+- Haustiere: ${data.hasPets ? "Ja" : "Nein"}
+- Wohnort/Zielstadt: ${data.city || ""}
+- Maximale Warmmiete: ${data.maxRent || ""} €/Monat
+- Zimmeranzahl: ${data.rooms || ""} Zimmer
+- Gewünschter Einzugstermin: ${data.moveDate || ""}
 - ${petLine}
-- Gewünschte Stadt: ${data.city}
-- Maximale Warmmiete: ${data.maxRent} €/Monat
-- Zimmeranzahl: ${data.rooms} Zimmer
-- Gewünschter Einzugstermin: ${data.moveDate}
-${extraLine}
+- ${extraLine}
 
-Vorgaben für das Anschreiben:
-- Beginne mit: "Sehr geehrte Damen und Herren,"
-- Ende mit:
-"Mit freundlichen Grüßen,
-${latinName}"
-- Maximal 180 Wörter
-- Natürliches Deutsch
-- Kein roboterhafter Stil
-- Warm, aber nicht übertrieben enthusiastisch
-- Betone: stabile finanzielle Lage, Zuverlässigkeit und sorgsamen Umgang mit der Wohnung
-- Kein Briefkopf
-- Kein Datum
-- Keine Adresse
-- Nur den Brieftext ausgeben
-- Wenn Haushaltsgröße mindestens 2 Personen beträgt, muss der gesamte Brief konsequent mit "wir", "uns" und "unser" geschrieben werden.
-- Niemals zwischen "ich" und "wir" wechseln.
+Sehr wichtige Regeln:
+- Beginne exakt mit: Sehr geehrte Damen und Herren,
+- Ende exakt mit:
+Mit freundlichen Grüßen,
+[Name in lateinischer Schrift]
+- Maximal 180 Wörter.
+- Kein Briefkopf.
+- Kein Datum.
+- Keine Adresse.
+- Kein Betreff.
+- Kein Markdown.
+- Keine Aufzählung.
+- Nur den fertigen Brieftext ausgeben.
+- Natürliches Deutsch, kein roboterhafter Stil.
+- Warm, aber nicht übertrieben enthusiastisch.
+- Keine erfundenen Informationen.
+- Erfinde keine bisherigen Wohnorte.
+- Erfinde keine finanziellen Rücklagen.
+- Erfinde keine SCHUFA, Referenzen oder Unterlagen.
 - Nicht "wunderschöne Stadt" schreiben.
-- Kein emotionaler Stil.
-- Unterschrift immer in lateinischer Schrift.
-Verwende den Namen des Bewerbers als Unterschrift.
-Falls der Name in lateinischer Schrift vorliegt, verwende diese Schreibweise.
-Falls der Name in persischer Schrift geschrieben ist, transliteriere ihn in eine übliche lateinische Schreibweise.
-- Verwende ausschließlich diesen lateinischen Namen im Brief und in der Unterschrift: ${latinName}
-- Verwende niemals persische oder arabische Schrift im Brief.
-Beispiel:
-آرش تفرشی → Arash Tafreshi
+- Nicht behaupten, dass die Miete garantiert gezahlt wird.
+- ${grammarRule}
+- Wenn der Name in persischer oder arabischer Schrift geschrieben ist, transliteriere ihn in eine übliche lateinische Schreibweise.
+- Beispiel: آرش تفرشی → Arash Tafreshi
+- Verwende im gesamten Brief und in der Unterschrift ausschließlich die lateinische Schreibweise des Namens.
+- Schreibe niemals persische oder arabische Schriftzeichen im Brief.
+- Verwende den Namen des Bewerbers als Unterschrift.
+- Wenn keine Haustiere vorhanden sind, erwähne das natürlich und positiv.
 
-Verwende ausschließlich die lateinische Schreibweise im gesamten Brief und in der Unterschrift.
-Schreibe NUR den Brieftext. Keine Erklärungen.`;
+Schreibe NUR den Brieftext. Keine Erklärung.`;
 }
 
 export async function generateAnschreiben(data) {
   const message = await client.messages.create({
     model: CLAUDE_MODEL,
-    max_tokens: 600,
+    max_tokens: 700,
+    temperature: 0.3,
     messages: [
       {
         role: "user",
