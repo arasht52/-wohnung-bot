@@ -1,6 +1,6 @@
 import TelegramBot from "node-telegram-bot-api";
 import { upsertUser } from "../../db.js";
-import { generateAnschreiben } from "../../backend/services/claudeService.js";
+import { generateAnschreiben } from "../services/claudeService.js";
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || "";
@@ -11,136 +11,384 @@ if (!TOKEN) throw new Error("TELEGRAM_BOT_TOKEN is not set");
 export const bot = new TelegramBot(TOKEN, { webHook: true });
 
 const sessions = {};
-const STEPS = ["firstName","lastName","job","income","familySize","pets","city","maxRent","rooms","moveDate","extraNote","confirm"];
 
-const PROMPTS = {
-  firstName:  "\u0628\u0647 WohnRadar \u062e\u0648\u0634 \u0622\u0645\u062f\u06cc\u062f!\n\n\u0646\u0627\u0645 \u0634\u0645\u0627 \u0686\u06cc\u0633\u062a\u061f",
-  lastName:   "\u0646\u0627\u0645 \u062e\u0627\u0646\u0648\u0627\u062f\u06af\u06cc \u0634\u0645\u0627 \u0686\u06cc\u0633\u062a\u061f",
-  job:        "\u0634\u063a\u0644 \u0634\u0645\u0627 \u0686\u06cc\u0633\u062a\u061f",
-  income:     "\u062f\u0631\u0622\u0645\u062f \u062e\u0627\u0644\u0635 \u0645\u0627\u0647\u0627\u0646\u0647 (\u06cc\u0648\u0631\u0648):\n\u0641\u0642\u0637 \u0639\u062f\u062f",
-  familySize: "\u0686\u0646\u062f \u0646\u0641\u0631 \u0627\u0633\u0628\u0627\u0628 \u06a9\u0634\u06cc \u0645\u06cc \u06a9\u0646\u0646\u062f\u061f",
-  pets:       "\u062d\u06cc\u0648\u0627\u0646 \u062e\u0627\u0646\u06af\u06cc \u062f\u0627\u0631\u06cc\u062f\u061f",
-  city:       "\u062f\u0631 \u06a9\u062f\u0627\u0645 \u0634\u0647\u0631 \u062f\u0646\u0628\u0627\u0644 \u062e\u0627\u0646\u0647 \u0645\u06cc \u06af\u0631\u062f\u06cc\u062f\u061f",
-  maxRent:    "\u062d\u062f\u0627\u06a9\u062b\u0631 \u0627\u062c\u0627\u0631\u0647 (\u06cc\u0648\u0631\u0648):\n\u0641\u0642\u0637 \u0639\u062f\u062f",
-  rooms:      "\u0686\u0646\u062f \u0627\u062a\u0627\u0642 \u0646\u06cc\u0627\u0632 \u062f\u0627\u0631\u06cc\u062f\u061f",
-  moveDate:   "\u062a\u0627\u0631\u06cc\u062e \u0627\u0633\u0628\u0627\u0628 \u06a9\u0634\u06cc \u0686\u06cc\u0633\u062a\u061f",
-  extraNote:  "\u0646\u06a9\u062a\u0647 \u0645\u0647\u0645\u06cc \u0647\u0633\u062a\u061f (- \u0628\u0632\u0646\u06cc\u062f \u0628\u0631\u0627\u06cc \u0631\u062f \u06a9\u0631\u062f\u0646)",
+const STEPS = [
+  "firstName",
+  "lastName",
+  "job",
+  "income",
+  "familySize",
+  "pets",
+  "city",
+  "maxRent",
+  "rooms",
+  "moveDate",
+  "extraNote",
+  "confirm",
+];
+
+const FA = {
+  welcome: "به WohnRadar خوش آمدید.\n\nاین ربات برای درخواست اجاره خانه در آلمان، متن آلمانی حرفه‌ای می‌سازد.",
+  firstName: "نام شما چیست؟",
+  lastName: "نام خانوادگی شما چیست؟",
+  job: "وضعیت شغلی شما چیست؟",
+  income: "درآمد خالص ماهانه شما چند یورو است؟\nفقط عدد وارد کنید.",
+  familySize: "چند نفر قرار است در خانه زندگی کنند؟",
+  pets: "حیوان خانگی دارید؟",
+  city: "در کدام شهر دنبال خانه می‌گردید؟",
+  maxRent: "حداکثر اجاره گرم چند یورو است؟\nفقط عدد وارد کنید.",
+  rooms: "چند اتاق نیاز دارید؟",
+  moveDate: "تاریخ اسباب‌کشی چه زمانی است؟\nمثال: 2026-07-01",
+  extraNote: "توضیح اضافه‌ای دارید؟\nاگر ندارید، روی «رد کردن» بزنید.",
+  cancelled: "فرایند لغو شد. برای شروع دوباره /start را بزنید.",
+  error: "مشکلی پیش آمد. لطفاً دوباره امتحان کنید یا /start را بزنید.",
 };
 
-const KB = {
-  familySize: { reply_markup: { keyboard: [["1"],["2"],["3"],["4+"]], one_time_keyboard: true, resize_keyboard: true } },
-  pets: { reply_markup: { keyboard: [["\u0628\u0644\u0647"],["\u062e\u06cc\u0631"]], one_time_keyboard: true, resize_keyboard: true } },
-  rooms: { reply_markup: { keyboard: [["1"],["2"],["2.5"],["3"],["3.5"],["4+"]], one_time_keyboard: true, resize_keyboard: true } },
-  confirm: { reply_markup: { keyboard: [["\u0628\u0644\u0647 \u062a\u0627\u06cc\u06cc\u062f \u0645\u06cc\u06a9\u0646\u0645"],["\u062e\u06cc\u0631 \u0627\u0632 \u0627\u0648\u0644"]], one_time_keyboard: true, resize_keyboard: true } },
-  extraNote: { reply_markup: { keyboard: [["-"]], one_time_keyboard: true, resize_keyboard: true } },
+const LABELS = {
+  employee: "کارمند",
+  self_employed: "خوداشتغال",
+  student: "دانشجو",
+  retired: "بازنشسته",
+  other: "سایر",
+  pet_no: "خیر، حیوان خانگی ندارم",
+  pet_yes: "بله، حیوان خانگی دارم",
+  skip: "رد کردن",
+  confirm_yes: "✅ تولید نامه",
+  confirm_restart: "🔄 شروع از اول",
 };
 
 const RK = { reply_markup: { remove_keyboard: true } };
 
-function getSession(id) { if (!sessions[id]) sessions[id] = { step: null, data: {} }; return sessions[id]; }
-function resetSession(id) { sessions[id] = { step: STEPS[0], data: {} }; }
-
-function buildSummary(d) {
-  return "\u062e\u0644\u0627\u0635\u0647:\n\n" +
-    "\u0646\u0627\u0645: " + d.firstName + " " + d.lastName + "\n" +
-    "\u0634\u063a\u0644: " + d.job + "\n" +
-    "\u062f\u0631\u0622\u0645\u062f: " + d.income + " EUR\n" +
-    "\u0646\u0641\u0631\u0627\u062a: " + d.familySize + "\n" +
-    "\u062d\u06cc\u0648\u0627\u0646: " + (d.pets ? "\u0628\u0644\u0647" : "\u062e\u06cc\u0631") + "\n" +
-    "\u0634\u0647\u0631: " + d.city + "\n" +
-    "\u0627\u062c\u0627\u0631\u0647: " + d.maxRent + " EUR\n" +
-    "\u0627\u062a\u0627\u0642: " + d.rooms + "\n" +
-    "\u0627\u0633\u0628\u0627\u0628\u06a9\u0634\u06cc: " + d.moveDate +
-    (d.extraNote && d.extraNote !== "-" ? "\n\u062a\u0648\u0636\u06cc\u062d: " + d.extraNote : "") +
-    "\n\n\u0622\u06cc\u0627 \u0635\u062d\u06cc\u062d \u0627\u0633\u062a\u061f";
+function keyboard(rows) {
+  return {
+    reply_markup: {
+      keyboard: rows,
+      resize_keyboard: true,
+      one_time_keyboard: true,
+    },
+  };
 }
 
-async function sendStep(chatId, step, data) {
-  const opts = { ...(KB[step] || RK) };
-  await bot.sendMessage(chatId, step === "confirm" ? buildSummary(data) : PROMPTS[step], opts);
+const KB = {
+  job: keyboard([
+    [LABELS.employee, LABELS.self_employed],
+    [LABELS.student, LABELS.retired],
+    [LABELS.other],
+  ]),
+  familySize: keyboard([
+    ["۱ نفر", "۲ نفر"],
+    ["۳ نفر", "۴ نفر یا بیشتر"],
+  ]),
+  pets: keyboard([
+    [LABELS.pet_no],
+    [LABELS.pet_yes],
+  ]),
+  rooms: keyboard([
+    ["۱", "۱.۵", "۲"],
+    ["۲.۵", "۳", "۴+"],
+  ]),
+  extraNote: keyboard([[LABELS.skip]]),
+  confirm: keyboard([
+    [LABELS.confirm_yes],
+    [LABELS.confirm_restart],
+  ]),
+};
+
+function normalizePersian(text = "") {
+  return String(text)
+    .trim()
+    .normalize("NFC")
+    .replace(/ي/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/\u200c+/g, "‌")
+    .replace(/\s+/g, " ");
+}
+
+function toLatinDigits(value = "") {
+  const persian = "۰۱۲۳۴۵۶۷۸۹";
+  const arabic = "٠١٢٣٤٥٦٧٨٩";
+
+  return String(value)
+    .replace(/[۰-۹]/g, (d) => String(persian.indexOf(d)))
+    .replace(/[٠-٩]/g, (d) => String(arabic.indexOf(d)));
+}
+
+function cleanInput(value = "") {
+  return normalizePersian(value);
+}
+
+function parseNumber(value) {
+  const cleaned = toLatinDigits(value).replace(",", ".").replace(/[^0-9.]/g, "");
+  const num = Number.parseFloat(cleaned);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+function normalizeJob(value) {
+  const v = normalizePersian(value);
+  const map = {
+    [LABELS.employee]: "employee",
+    [LABELS.self_employed]: "self_employed",
+    [LABELS.student]: "student",
+    [LABELS.retired]: "retired",
+    [LABELS.other]: "other",
+  };
+  return map[v] || "other";
+}
+
+function normalizeFamilySize(value) {
+  const v = toLatinDigits(normalizePersian(value));
+  if (v.includes("4")) return 4;
+  const n = Number.parseInt(v, 10);
+  return Number.isFinite(n) && n >= 1 ? n : null;
+}
+
+function normalizePets(value) {
+  const v = normalizePersian(value);
+  if (v === LABELS.pet_no || v === "خیر" || v.toLowerCase() === "no" || v.toLowerCase() === "nein") return false;
+  if (v === LABELS.pet_yes || v === "بله" || v.toLowerCase() === "yes" || v.toLowerCase() === "ja") return true;
+  return null;
+}
+
+function normalizeRooms(value) {
+  const v = toLatinDigits(normalizePersian(value)).replace(",", ".");
+  if (v.includes("4+")) return "4+";
+  const num = Number.parseFloat(v);
+  if (!Number.isFinite(num) || num < 1) return null;
+  return String(num).replace(".5", ".5");
+}
+
+function getSession(userId) {
+  if (!sessions[userId]) sessions[userId] = { step: null, data: {} };
+  return sessions[userId];
+}
+
+function resetSession(userId) {
+  sessions[userId] = { step: STEPS[0], data: {} };
+}
+
+function clearSession(userId) {
+  sessions[userId] = { step: null, data: {} };
+}
+
+function employmentLabel(value) {
+  const map = {
+    employee: "کارمند",
+    self_employed: "خوداشتغال",
+    student: "دانشجو",
+    retired: "بازنشسته",
+    other: "سایر",
+  };
+  return map[value] || value || "-";
+}
+
+function buildSummary(d) {
+  return [
+    "خلاصه:",
+    "",
+    `👤 نام: ${d.firstName} ${d.lastName}`,
+    `💼 وضعیت شغلی: ${employmentLabel(d.employmentStatus)}`,
+    `💶 درآمد: ${d.income} €`,
+    `👥 تعداد نفرات: ${d.familySize}`,
+    `🐾 حیوان خانگی: ${d.hasPets ? "بله" : "خیر"}`,
+    `📍 شهر: ${d.city}`,
+    `🏠 اجاره گرم تا: ${d.maxRent} €`,
+    `🚪 تعداد اتاق: ${d.rooms}`,
+    `📅 تاریخ اسباب‌کشی: ${d.moveDate}`,
+    d.extraNote ? `📝 توضیح: ${d.extraNote}` : null,
+    "",
+    "تأیید می‌کنید؟",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function sendStep(chatId, step, data = {}) {
+  if (step === "confirm") {
+    await bot.sendMessage(chatId, buildSummary(data), KB.confirm);
+    return;
+  }
+
+  await bot.sendMessage(chatId, FA[step], KB[step] || RK);
 }
 
 bot.on("message", async (msg) => {
   const chatId = msg.chat.id;
   const userId = String(msg.from.id);
-  const text = (msg.text || "").trim();
-
-  if (text === "/start") {
-    resetSession(userId);
-    await bot.sendMessage(chatId, "WohnRadar - \u062f\u0633\u062a\u06cc\u0627\u0631 \u06cc\u0627\u0641\u062a\u0646 \u062e\u0627\u0646\u0647 \u062f\u0631 \u0622\u0644\u0645\u0627\u0646", RK);
-    await sendStep(chatId, STEPS[0], {});
-    return;
-  }
-  if (text === "/cancel") {
-    sessions[userId] = { step: null, data: {} };
-    await bot.sendMessage(chatId, "\u0644\u063a\u0648 \u0634\u062f. /start", RK);
-    return;
-  }
+  const text = cleanInput(msg.text || "");
 
   const session = getSession(userId);
-  if (!session.step) { await bot.sendMessage(chatId, "/start"); return; }
+  const beforeStep = session.step;
 
-  const step = session.step;
+  console.log("[telegram message]", {
+    userId,
+    text,
+    beforeStep,
+  });
 
-  if (step === "income" || step === "maxRent") {
-    const num = parseFloat(text.replace(/[^0-9.]/g, ""));
-    if (isNaN(num) || num <= 0) { await bot.sendMessage(chatId, "\u0639\u062f\u062f \u0648\u0627\u0631\u062f \u06a9\u0646\u06cc\u062f"); return; }
-    session.data[step] = num;
-  } else if (step === "familySize") {
-    const num = parseInt(text) || (text.includes("4") ? 4 : NaN);
-    if (isNaN(num) || num < 1) { await bot.sendMessage(chatId, "\u0639\u062f\u062f \u0648\u0627\u0631\u062f \u06a9\u0646\u06cc\u062f"); return; }
-    session.data[step] = num;
-  } else if (step === "rooms") {
-    const num = parseFloat(text.replace(/[^0-9.]/g, ""));
-    if (isNaN(num) || num < 1) { await bot.sendMessage(chatId, "\u0639\u062f\u062f \u0648\u0627\u0631\u062f \u06a9\u0646\u06cc\u062f"); return; }
-    session.data[step] = num;
-  } else if (step === "pets") {
-    const yes = ["\u0628\u0644\u0647","ja","yes"].includes(text.toLowerCase());
-    const no = ["\u062e\u06cc\u0631","nein","no"].includes(text.toLowerCase());
-    if (!yes && !no) { await bot.sendMessage(chatId, "\u0628\u0644\u0647 \u06cc\u0627 \u062e\u06cc\u0631", KB.pets); return; }
-    session.data[step] = yes;
-  } else if (step === "confirm") {
-    const yes = text.includes("\u0628\u0644\u0647") || text.toLowerCase() === "ja";
-    const no = text.includes("\u062e\u06cc\u0631") || text.toLowerCase() === "nein";
-    if (!yes && !no) { await bot.sendMessage(chatId, "\u06cc\u06a9\u06cc \u0631\u0627 \u0627\u0646\u062a\u062e\u0627\u0628 \u06a9\u0646\u06cc\u062f", KB.confirm); return; }
-    if (no) { resetSession(userId); await bot.sendMessage(chatId, "\u0627\u0632 \u0627\u0648\u0644!"); await sendStep(chatId, STEPS[0], {}); return; }
-    await bot.sendMessage(chatId, "\u062f\u0631 \u062d\u0627\u0644 \u0646\u0648\u0634\u062a\u0646 \u0646\u0627\u0645\u0647...", RK);
-    try {
-      const profileData = { ...session.data, telegramUserId: userId, hasPets: session.data.pets };
-      upsertUser(profileData);
-      const anschreiben = await generateAnschreiben(profileData);
-      await bot.sendMessage(chatId, "\u0646\u0627\u0645\u0647 \u0634\u0645\u0627:\n\n" + anschreiben);
-      await bot.sendMessage(chatId, "\u0622\u0645\u0627\u062f\u0647 \u0627\u0633\u062a! /start \u0628\u0631\u0627\u06cc \u0646\u0627\u0645\u0647 \u062c\u062f\u06cc\u062f.");
-    } catch (err) {
-      console.error("Anschreiben error:", err.message);
-      await bot.sendMessage(chatId, "\u062e\u0637\u0627. /start \u0628\u0632\u0646\u06cc\u062f.");
+  try {
+    if (text === "/start") {
+      resetSession(userId);
+      await bot.sendMessage(chatId, FA.welcome, RK);
+      await sendStep(chatId, STEPS[0], {});
+      return;
     }
-    sessions[userId] = { step: null, data: {} };
-    return;
-  } else {
-    if (!text) { await bot.sendMessage(chatId, "\u067e\u0627\u0633\u062e \u062f\u0647\u06cc\u062f"); return; }
-    session.data[step] = text;
-  }
 
-  const nextStep = STEPS[STEPS.indexOf(step) + 1];
-  session.step = nextStep;
-  await sendStep(chatId, nextStep, session.data);
+    if (text === "/cancel") {
+      clearSession(userId);
+      await bot.sendMessage(chatId, FA.cancelled, RK);
+      return;
+    }
+
+    if (text === "/help") {
+      await bot.sendMessage(
+        chatId,
+        "دستورها:\n/start شروع دوباره\n/cancel لغو فرایند\n/help راهنما\n/about درباره پروژه",
+        RK
+      );
+      return;
+    }
+
+    if (text === "/about") {
+      await bot.sendMessage(
+        chatId,
+        "WohnRadar برای فارسی‌زبانان آلمان ساخته شده و متن آلمانی درخواست اجاره خانه تولید می‌کند.",
+        RK
+      );
+      return;
+    }
+
+    if (!session.step) {
+      await bot.sendMessage(chatId, "برای شروع /start را بزنید.", RK);
+      return;
+    }
+
+    const step = session.step;
+
+    if (step === "firstName" || step === "lastName" || step === "city" || step === "moveDate") {
+      if (!text) {
+        await bot.sendMessage(chatId, "لطفاً پاسخ را وارد کنید.");
+        return;
+      }
+      session.data[step] = text;
+    }
+
+    else if (step === "job") {
+      const job = normalizeJob(text);
+      session.data.employmentStatus = job;
+      session.data.job = employmentLabel(job);
+    }
+
+    else if (step === "income" || step === "maxRent") {
+      const num = parseNumber(text);
+      if (!num) {
+        await bot.sendMessage(chatId, "لطفاً فقط عدد معتبر وارد کنید.");
+        return;
+      }
+      session.data[step] = num;
+    }
+
+    else if (step === "familySize") {
+      const n = normalizeFamilySize(text);
+      if (!n) {
+        await bot.sendMessage(chatId, "لطفاً یکی از گزینه‌ها را انتخاب کنید.", KB.familySize);
+        return;
+      }
+      session.data.familySize = n;
+    }
+
+    else if (step === "pets") {
+      const value = normalizePets(text);
+      if (value === null) {
+        await bot.sendMessage(chatId, "لطفاً یکی از گزینه‌ها را انتخاب کنید.", KB.pets);
+        return;
+      }
+      session.data.hasPets = value;
+      session.data.pets = value ? "yes" : "no";
+    }
+
+    else if (step === "rooms") {
+      const value = normalizeRooms(text);
+      if (!value) {
+        await bot.sendMessage(chatId, "لطفاً یکی از گزینه‌ها را انتخاب کنید.", KB.rooms);
+        return;
+      }
+      session.data.rooms = value;
+    }
+
+    else if (step === "extraNote") {
+      session.data.extraNote = text === LABELS.skip || text === "-" ? "" : text;
+    }
+
+    else if (step === "confirm") {
+      if (text === LABELS.confirm_restart) {
+        resetSession(userId);
+        await bot.sendMessage(chatId, "از اول شروع می‌کنیم.", RK);
+        await sendStep(chatId, STEPS[0], {});
+        return;
+      }
+
+      if (text !== LABELS.confirm_yes) {
+        await bot.sendMessage(chatId, "لطفاً یکی از گزینه‌ها را انتخاب کنید.", KB.confirm);
+        return;
+      }
+
+      await bot.sendMessage(chatId, "در حال نوشتن نامه...", RK);
+
+      const profileData = {
+        ...session.data,
+        telegramUserId: userId,
+      };
+
+      upsertUser(profileData);
+
+      const anschreiben = await generateAnschreiben(profileData);
+
+      await bot.sendMessage(chatId, "نامه شما:\n\n" + anschreiben, RK);
+      await bot.sendMessage(chatId, "برای ساخت نامه جدید /start را بزنید.");
+
+      clearSession(userId);
+      return;
+    }
+
+    const currentIndex = STEPS.indexOf(step);
+    const nextStep = STEPS[currentIndex + 1];
+
+    session.step = nextStep;
+
+    console.log("[telegram step]", {
+      userId,
+      beforeStep: step,
+      afterStep: nextStep,
+    });
+
+    await sendStep(chatId, nextStep, session.data);
+  } catch (err) {
+    console.error("[telegram error]", err);
+    await bot.sendMessage(chatId, FA.error, RK);
+  }
 });
 
 export async function setupWebhook() {
-  if (!BASE_URL) { console.warn("PUBLIC_BASE_URL not set"); return; }
+  if (!BASE_URL) {
+    console.warn("PUBLIC_BASE_URL not set");
+    return;
+  }
+
   try {
     const opts = SECRET ? { secret_token: SECRET } : {};
     await bot.setWebHook(BASE_URL + "/telegram/webhook", opts);
     console.log("Webhook set: " + BASE_URL + "/telegram/webhook");
-  } catch (err) { console.error("Webhook failed:", err.message); }
+  } catch (err) {
+    console.error("Webhook failed:", err.message);
+  }
 }
 
 export function telegramWebhookHandler(req, res) {
   if (SECRET) {
-    const t = req.headers["x-telegram-bot-api-secret-token"];
-    if (t !== SECRET) return res.status(403).json({ error: "Forbidden" });
+    const token = req.headers["x-telegram-bot-api-secret-token"];
+    if (token !== SECRET) return res.status(403).json({ error: "Forbidden" });
   }
+
   bot.processUpdate(req.body);
   res.sendStatus(200);
 }
