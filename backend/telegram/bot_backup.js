@@ -13,23 +13,23 @@ const sessions = {};
 const STEPS = ['firstName','lastName','job','income','familySize','pets','city','maxRent','rooms','moveDate','extraNote','confirm'];
 
 const PROMPTS = {
-  firstName: "Welcome to WohnRadar!
+  firstName: '👋 خوش آمدید به WohnRadar!
 
-First name / Vorname:",
-  lastName: "Last name / Nachname:",
-  job: "Job / Beruf:",
-  income: "Monthly income EUR / Monatliches Einkommen (EUR):
-(number only / nur Zahl, z.B. 2500)",
-  familySize: "How many people moving? / Wie viele Personen?",
-  pets: "Pets? / Haustiere?",
-  city: "Which city in Germany? / Welche Stadt?",
-  maxRent: "Max rent EUR / Max. Warmmiete (EUR):
-(number only, z.B. 1200)",
-  rooms: "Rooms needed / Zimmer benoetigt:",
-  moveDate: "Move-in date / Einzugstermin:
-(z.B. 01.08.2025)",
-  extraNote: "Any notes? / Zusaetzliche Info?
-(skip with -)",
+*نام* شما چیست؟',
+  lastName: '*نام خانوادگی* شما چیست؟',
+  job: '*شغل* شما چیست؟',
+  income: '*درآمد خالص ماهانه* چقدر است؟ (یورو)
+_(فقط عدد، مثلاً 2500)_',
+  familySize: 'چند نفر *اسباب کشی* می کنند؟',
+  pets: 'آیا *حیوان خانگی* دارید؟',
+  city: 'در کدام *شهر* آلمان دنبال خانه می گردید؟',
+  maxRent: 'حداکثر *اجاره ماهانه* چقدر است؟ (یورو)
+_(فقط عدد، مثلاً 1200)_',
+  rooms: 'چند *اتاق* نیاز دارید؟',
+  moveDate: 'تاریخ *اسباب کشی* چیست؟
+_(مثلاً 01.08.2025 یا هر چه زودتر)_',
+  extraNote: 'آیا *نکته مهمی* هست؟
+_(اختیاری - برای رد کردن - بزنید)_',
 };
 
 const KB = {
