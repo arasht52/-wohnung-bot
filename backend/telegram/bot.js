@@ -13,18 +13,17 @@ export const bot = new TelegramBot(TOKEN, { webHook: true });
 const sessions = {};
 const STEPS = ["firstName","lastName","job","income","familySize","pets","city","maxRent","rooms","moveDate","extraNote","confirm"];
 const PROMPTS = {
-  firstName:  "👋 Willkommen beim WohnRadar Bot!\n\nWie ist dein *Vorname*?",
-  lastName:   "Und dein *Nachname*?",
-  job:        "Was ist dein *Beruf*?",
-  income:     "Wie hoch ist dein monatliches *Nettoeinkommen* in €?\n_(Nur die Zahl, z.B. 2500)_",
-  familySize: "Wie viele Personen ziehen ein?\n_(z.B. 1, 2, 3)_",
-  pets:       "Hast du *Haustiere*? *(ja / nein)*",
-  city:       "In welcher *Stadt* suchst du eine Wohnung?",
-  maxRent:    "Was ist deine *maximale Warmmiete* in €/Monat?\n_(Nur die Zahl, z.B. 1200)_",
-  rooms:      "Wie viele *Zimmer* brauchst du?\n_(z.B. 2, 2.5, 3)_",
-  moveDate:   "Wann möchtest du *einziehen*?\n_(z.B. 01.08.2025 oder 'ab sofort')_",
-  extraNote:  "Gibt es noch etwas *Wichtiges*?\n_(Optional – tippe '-' zum Überspringen)_",
-};
+  firstName: "👋 به WohnRadar خوش آمدید!\n\nنام شما چیست؟",
+  lastName: "نام خانوادگی شما چیست؟",
+  job: "شغل شما چیست؟",
+  income: "درآمد خالص ماهانه شما چقدر است؟ (یورو)\n(فقط عدد، مثلاً 2500)",",
+  familySize: "چند نفر اسباب کشی می کنند؟",
+  pets: "آیا حیوان خانگی دارید؟",
+  city: "در کدام شهر آلمان دنبال خانه می گردید؟",
+  maxRent: "حداکثر اجاره ماهانه چقدر است؟ (یورو)\n(فقط عدد، مثلاً 1200)",
+  rooms: "چند اتاق نیاز دارید؟",
+  moveDate: "تاریخ اسباب کشی چیست؟\n(مثلاً 01.08.2025)",
+  extraNote: "نکته مهمی هست؟\n(اختیاری - برای رد کردن - بزنید)",
 
 function getSession(userId) {
   if (!sessions[userId]) sessions[userId] = { step: null, data: {} };
