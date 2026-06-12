@@ -1,143 +1,120 @@
-import TelegramBot from 'node-telegram-bot-api';
-import { upsertUser } from '../../db.js';
-import { generateAnschreiben } from '../../backend/services/claudeService.js';
+import TelegramBot from "node-telegram-bot-api";
+import { upsertUser } from "../../db.js";
+import { generateAnschreiben } from "../../backend/services/claudeService.js";
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || '';
-const BASE_URL = process.env.PUBLIC_BASE_URL || '';
+const SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || "";
+const BASE_URL = process.env.PUBLIC_BASE_URL || "";
 
+if (!TOKEN) throw new Error("TELEGRAM_BOT_TOKEN is not set");
 
 export const bot = new TelegramBot(TOKEN, { webHook: true });
 
 const sessions = {};
-const STEPS = ['firstName','lastName','job','income','familySize','pets','city','maxRent','rooms','moveDate','extraNote','confirm'];
-
+const STEPS = ["firstName","lastName","job","income","familySize","pets","city","maxRent","rooms","moveDate","extraNote","confirm"];
 const PROMPTS = {
-  firstName: "Welcome to WohnRadar!
-
-First name / Vorname:",
-  lastName: "Last name / Nachname:",
-  job: "Job / Beruf:",
-  income: "Monthly income EUR / Monatliches Einkommen (EUR):
-(number only / nur Zahl, z.B. 2500)",
-  familySize: "How many people moving? / Wie viele Personen?",
-  pets: "Pets? / Haustiere?",
-  city: "Which city in Germany? / Welche Stadt?",
-  maxRent: "Max rent EUR / Max. Warmmiete (EUR):
-(number only, z.B. 1200)",
-  rooms: "Rooms needed / Zimmer benoetigt:",
-  moveDate: "Move-in date / Einzugstermin:
-(z.B. 01.08.2025)",
-  extraNote: "Any notes? / Zusaetzliche Info?
-(skip with -)",
+  firstName:  "👋 Willkommen beim WohnRadar Bot!\n\nWie ist dein *Vorname*?",
+  lastName:   "Und dein *Nachname*?",
+  job:        "Was ist dein *Beruf*?",
+  income:     "Wie hoch ist dein monatliches *Nettoeinkommen* in €?\n_(Nur die Zahl, z.B. 2500)_",
+  familySize: "Wie viele Personen ziehen ein?\n_(z.B. 1, 2, 3)_",
+  pets:       "Hast du *Haustiere*? *(ja / nein)*",
+  city:       "In welcher *Stadt* suchst du eine Wohnung?",
+  maxRent:    "Was ist deine *maximale Warmmiete* in €/Monat?\n_(Nur die Zahl, z.B. 1200)_",
+  rooms:      "Wie viele *Zimmer* brauchst du?\n_(z.B. 2, 2.5, 3)_",
+  moveDate:   "Wann möchtest du *einziehen*?\n_(z.B. 01.08.2025 oder 'ab sofort')_",
+  extraNote:  "Gibt es noch etwas *Wichtiges*?\n_(Optional – tippe '-' zum Überspringen)_",
 };
 
-const KB = {
-  familySize: { reply_markup: { keyboard: [['1'],['2'],['3'],['4+']], one_time_keyboard: true, resize_keyboard: true } },
-  pets: { reply_markup: { keyboard: [['بله'],['خیر']], one_time_keyboard: true, resize_keyboard: true } },
-  rooms: { reply_markup: { keyboard: [['1'],['2'],['2.5'],['3'],['3.5'],['4+']], one_time_keyboard: true, resize_keyboard: true } },
-  confirm: { reply_markup: { keyboard: [['بله تایید میکنم'],['خیر از اول']], one_time_keyboard: true, resize_keyboard: true } },
-  extraNote: { reply_markup: { keyboard: [['-']], one_time_keyboard: true, resize_keyboard: true } },
-};
-
-const RK = { reply_markup: { remove_keyboard: true } };
-
-function resetSession(id) { sessions[id] = { step: STEPS[0], data: {} }; }
-
-function buildSummary(d) {
-  return '📋 *خلاصه اطلاعات شما:*
-
-' +
-    '👤 نام: ' + d.firstName + ' ' + d.lastName + '
-' +
-    '💼 شغل: ' + d.job + '
-' +
-    '💰 درآمد: ' + d.income + ' یورو/ماه
-' +
-    '👨‍👩‍👧 تعداد نفرات: ' + d.familySize + '
-' +
-    '🐾 حیوان خانگی: ' + (d.pets ? 'بله' : 'خیر') + '
-' +
-    '📍 شهر: ' + d.city + '
-' +
-    '🏠 حداکثر اجاره: ' + d.maxRent + ' یورو
-' +
-    '🚪 تعداد اتاق: ' + d.rooms + '
-' +
-    '📅 اسباب کشی: ' + d.moveDate +
-    (d.extraNote && d.extraNote !== '-' ? '
-📝 توضیحات: ' + d.extraNote : '') +
-    '
-
-آیا اطلاعات صحیح است؟';
+function getSession(userId) {
+  if (!sessions[userId]) sessions[userId] = { step: null, data: {} };
+  return sessions[userId];
 }
-
+function resetSession(userId) {
+  sessions[userId] = { step: STEPS[0], data: {} };
+}
+function buildSummary(data) {
+  return `📋 *Zusammenfassung:*\n\n👤 ${data.firstName} ${data.lastName}\n💼 ${data.job}\n💰 ${data.income} €/Monat\n👨‍👩‍👧 ${data.familySize} Person(en)\n🐾 Haustiere: ${data.pets ? "Ja" : "Nein"}\n📍 ${data.city}\n🏠 Max. ${data.maxRent} €/Monat\n🚪 ${data.rooms} Zimmer\n📅 Einzug: ${data.moveDate}${data.extraNote && data.extraNote !== "-" ? `\n📝 ${data.extraNote}` : ""}\n\nAlles korrekt? Tippe *ja* oder *nein*.`;
+}
 async function sendStep(chatId, step, data) {
-  const opts = { parse_mode: 'Markdown', ...(KB[step] || RK) };
-  await bot.sendMessage(chatId, step === 'confirm' ? buildSummary(data) : PROMPTS[step], opts);
+  const opts = { parse_mode: "Markdown" };
+  if (step === "confirm") {
+    await bot.sendMessage(chatId, buildSummary(data), opts);
+  } else {
+    await bot.sendMessage(chatId, PROMPTS[step], opts);
+  }
+}
+function normalizeYN(text) {
+  const t = text.trim().toLowerCase();
+  if (["ja","yes","j","y"].includes(t)) return "ja";
+  if (["nein","no","n"].includes(t)) return "nein";
+  return null;
 }
 
-bot.on('message', async (msg) => {
+bot.on("message", async (msg) => {
   const chatId = msg.chat.id;
   const userId = String(msg.from.id);
-  const text = (msg.text || '').trim();
+  const text = (msg.text || "").trim();
 
-  if (text === '/start') {
+  if (text === "/start") {
     resetSession(userId);
-    await bot.sendMessage(chatId, '🏠 *WohnRadar - دستیار یافتن خانه در آلمان*
-
-برای نوشتن نامه درخواست اجاره به چند سوال پاسخ دهید.', { parse_mode: 'Markdown', ...RK });
     await sendStep(chatId, STEPS[0], {});
     return;
   }
-  if (text === '/cancel') {
+  if (text === "/cancel") {
     sessions[userId] = { step: null, data: {} };
-    await bot.sendMessage(chatId, 'لغو شد. برای شروع /start بزنید.', RK);
+    await bot.sendMessage(chatId, "❌ Abgebrochen. Tippe /start um neu zu beginnen.");
     return;
   }
 
   const session = getSession(userId);
+  if (!session.step) {
+    await bot.sendMessage(chatId, "Tippe /start um zu beginnen. 🏠");
+    return;
+  }
 
   const step = session.step;
 
-  if (step === 'income' || step === 'maxRent') {
-    const num = parseFloat(text.replace(/[^d.]/g, ''));
-    if (isNaN(num) || num <= 0) { await bot.sendMessage(chatId, 'لطفاً یک عدد معتبر وارد کنید.'); return; }
+  if (step === "income" || step === "maxRent") {
+    const num = parseFloat(text.replace(",", "."));
+    if (isNaN(num) || num <= 0) { await bot.sendMessage(chatId, "⚠️ Bitte gib eine gültige Zahl ein."); return; }
     session.data[step] = num;
-  } else if (step === 'familySize') {
-    const num = parseInt(text.replace(/[^d]/g, '')) || (text.includes('4') ? 4 : NaN);
-    if (isNaN(num) || num < 1) { await bot.sendMessage(chatId, 'لطفاً تعداد نفرات را وارد کنید.'); return; }
+  } else if (step === "familySize") {
+    const num = parseInt(text);
+    if (isNaN(num) || num < 1) { await bot.sendMessage(chatId, "⚠️ Bitte gib eine Zahl ein."); return; }
     session.data[step] = num;
-  } else if (step === 'rooms') {
-    const num = parseFloat(text.replace(/[^d.]/g, ''));
-    if (isNaN(num) || num < 1) { await bot.sendMessage(chatId, 'لطفاً تعداد اتاق را وارد کنید.'); return; }
+  } else if (step === "rooms") {
+    const num = parseFloat(text.replace(",", "."));
+    if (isNaN(num) || num < 1) { await bot.sendMessage(chatId, "⚠️ Bitte gib eine Zimmeranzahl ein."); return; }
     session.data[step] = num;
-  } else if (step === 'pets') {
-    const yes = text === 'بله' || text.toLowerCase() === 'ja';
-    const no = text === 'خیر' || text.toLowerCase() === 'nein';
-    session.data[step] = yes;
-  } else if (step === 'confirm') {
-    const yes = text.includes('بله') || text.toLowerCase() === 'ja';
-    const no = text.includes('خیر') || text.toLowerCase() === 'nein';
-    if (no) { resetSession(userId); await bot.sendMessage(chatId, 'از ابتدا شروع میکنیم!'); await sendStep(chatId, STEPS[0], {}); return; }
-    await bot.sendMessage(chatId, 'در حال نوشتن نامه... لطفاً صبر کنید.', RK);
+  } else if (step === "pets") {
+    const yn = normalizeYN(text);
+    if (!yn) { await bot.sendMessage(chatId, "⚠️ Bitte antworte mit *ja* oder *nein*.", { parse_mode: "Markdown" }); return; }
+    session.data[step] = yn === "ja";
+  } else if (step === "confirm") {
+    const yn = normalizeYN(text);
+    if (!yn) { await bot.sendMessage(chatId, "⚠️ Bitte antworte mit *ja* oder *nein*.", { parse_mode: "Markdown" }); return; }
+    if (yn === "nein") {
+      resetSession(userId);
+      await bot.sendMessage(chatId, "🔄 Okay, von vorne!");
+      await sendStep(chatId, STEPS[0], {});
+      return;
+    }
+    await bot.sendMessage(chatId, "⏳ Generiere dein Anschreiben...");
     try {
       const profileData = { ...session.data, telegramUserId: userId, hasPets: session.data.pets };
       upsertUser(profileData);
       const anschreiben = await generateAnschreiben(profileData);
-      await bot.sendMessage(chatId, '*نامه درخواست شما:*
-
-' + anschreiben, { parse_mode: 'Markdown' });
-      await bot.sendMessage(chatId, 'نامه آماده است! برای نامه جدید /start بزنید.
-
-💎 بزودی: ارسال PDF به ایمیل!', { parse_mode: 'Markdown' });
+      await bot.sendMessage(chatId, `✅ *Dein Anschreiben:*\n\n${anschreiben}`, { parse_mode: "Markdown" });
+      await bot.sendMessage(chatId, "🎉 Fertig! Tippe /start für ein neues Anschreiben.\n\n💎 *Premium (demnächst):* PDF-Versand per E-Mail!", { parse_mode: "Markdown" });
     } catch (err) {
-      console.error('Anschreiben error:', err.message);
-      await bot.sendMessage(chatId, 'خطا در نوشتن نامه. دوباره /start بزنید.');
+      console.error("Anschreiben error:", err.message);
+      await bot.sendMessage(chatId, "❌ Fehler beim Generieren. Bitte versuche es mit /start erneut.");
     }
     sessions[userId] = { step: null, data: {} };
     return;
   } else {
+    if (!text) { await bot.sendMessage(chatId, "⚠️ Bitte gib eine Antwort ein."); return; }
     session.data[step] = text;
   }
 
@@ -147,17 +124,21 @@ bot.on('message', async (msg) => {
 });
 
 export async function setupWebhook() {
+  if (!BASE_URL) { console.warn("⚠️ PUBLIC_BASE_URL not set – skipping webhook"); return; }
+  const webhookUrl = `${BASE_URL}/telegram/webhook`;
   try {
     const opts = SECRET ? { secret_token: SECRET } : {};
-    await bot.setWebHook(BASE_URL + '/telegram/webhook', opts);
-    console.log('Telegram webhook set: ' + BASE_URL + '/telegram/webhook');
-  } catch (err) { console.error('Webhook setup failed:', err.message); }
+    await bot.setWebHook(webhookUrl, opts);
+    console.log(`✅ Telegram webhook set: ${webhookUrl}`);
+  } catch (err) {
+    console.error("❌ Webhook setup failed:", err.message);
+  }
 }
 
 export function telegramWebhookHandler(req, res) {
   if (SECRET) {
-    const incoming = req.headers['x-telegram-bot-api-secret-token'];
-    if (incoming !== SECRET) return res.status(403).json({ error: 'Forbidden' });
+    const incoming = req.headers["x-telegram-bot-api-secret-token"];
+    if (incoming !== SECRET) return res.status(403).json({ error: "Forbidden" });
   }
   bot.processUpdate(req.body);
   res.sendStatus(200);
